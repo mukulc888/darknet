@@ -24,7 +24,9 @@ Windows Python 2.7 version: https://github.com/AlexeyAB/darknet/blob/fc496d52bf2
 from ctypes import *
 import math
 import random
+import sys
 import os
+sys.path.append('/home/mukul888/darknet/'),
 
 
 class BOX(Structure):
@@ -128,6 +130,8 @@ def print_detections(detections, coordinates=False):
             print("{}: {}%".format(label, confidence))
 
 
+
+
 def draw_boxes(detections, image, colors):
     import cv2
     for label, confidence, bbox in detections:
@@ -220,9 +224,7 @@ if os.name == "nt":
             lib = CDLL(winGPUdll, RTLD_GLOBAL)
             print("Environment variables indicated a CPU run, but we didn't find {}. Trying a GPU run anyway.".format(winNoGPUdll))
 else:
-    lib = CDLL(os.path.join(
-        os.environ.get('DARKNET_PATH', './'),
-        "libdarknet.so"), RTLD_GLOBAL)
+    lib = CDLL("/home/mukul888/darknet/libdarknet.so", RTLD_GLOBAL)
 lib.network_width.argtypes = [c_void_p]
 lib.network_width.restype = c_int
 lib.network_height.argtypes = [c_void_p]

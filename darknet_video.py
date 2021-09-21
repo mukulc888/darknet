@@ -5,29 +5,35 @@ import cv2
 import time
 import darknet
 import argparse
-from threading import Thread, enumerate
+
+import numpy as np
+from darknet import *
+from skimage.color import rgb2hsv
 from queue import Queue
+from threading import Thread, enumerate
 
 
 def parser():
     parser = argparse.ArgumentParser(description="YOLO Object Detection")
-    parser.add_argument("--input", type=str, default=0,
+    parser.add_argument("--input", type=str, default="test3.mp4",
                         help="video source. If empty, uses webcam 0 stream")
     parser.add_argument("--out_filename", type=str, default="",
                         help="inference video name. Not saved if empty")
-    parser.add_argument("--weights", default="yolov4.weights",
+    parser.add_argument("--weights", default="yolov4-tiny-custom_best.weights",
                         help="yolo weights path")
     parser.add_argument("--dont_show", action='store_true',
                         help="windown inference display. For headless systems")
     parser.add_argument("--ext_output", action='store_true',
                         help="display bbox coordinates of detected objects")
-    parser.add_argument("--config_file", default="./cfg/yolov4.cfg",
+    parser.add_argument("--config_file", default="cfg/yolov4-tiny-custom.cfg",
                         help="path to config file")
-    parser.add_argument("--data_file", default="./cfg/coco.data",
+    parser.add_argument("--data_file", default="data/obj.data",
                         help="path to data file")
     parser.add_argument("--thresh", type=float, default=.25,
                         help="remove detections with confidence below this value")
     return parser.parse_args()
+
+
 
 
 def str2int(video_path):
@@ -70,6 +76,8 @@ def convert2relative(bbox):
     return x/_width, y/_height, w/_width, h/_height
 
 
+
+
 def convert2original(image, bbox):
     x, y, w, h = convert2relative(bbox)
 
@@ -105,7 +113,7 @@ def convert4cropping(image, bbox):
     return bbox_cropping
 
 
-def video_capture(frame_queue, darknet_image_queue):
+def video_capture(frame_queue, frame_queue_1, darknet_image_queue):
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -129,9 +137,10 @@ def inference(darknet_image_queue, detections_queue, fps_queue):
         fps = int(1/(time.time() - prev_time))
         fps_queue.put(fps)
         print("FPS: {}".format(fps))
-        darknet.print_detections(detections, args.ext_output)
+        darknet.print_detections(detections, True)
         darknet.free_image(darknet_image)
     cap.release()
+
 
 
 def drawing(frame_queue, detections_queue, fps_queue):
@@ -159,11 +168,32 @@ def drawing(frame_queue, detections_queue, fps_queue):
     cv2.destroyAllWindows()
 
 
+def darknet_helper(img, width, height):
+    darknet_image = make_image(width, height, 3)
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img_resized = cv2.resize(img_rgb, (width, height),
+                              interpolation=cv2.INTER_LINEAR)
+
+    # get image ratios to convert bounding boxes to proper size
+    img_height, img_width, _ = img.shape
+    width_ratio = img_width/width
+    height_ratio = img_height/height
+
+    # run model on darknet style image to get detections
+    copy_image_from_bytes(darknet_image, img_resized.tobytes())
+    detections = detect_image(network, class_names, darknet_image)
+    free_image(darknet_image)
+    return detections, width_ratio, height_ratio
+
+
+
+
 if __name__ == '__main__':
     frame_queue = Queue()
     darknet_image_queue = Queue(maxsize=1)
     detections_queue = Queue(maxsize=1)
     fps_queue = Queue(maxsize=1)
+    frame_queue_1 = Queue()
 
     args = parser()
     check_arguments_errors(args)
@@ -175,8 +205,11 @@ if __name__ == '__main__':
         )
     darknet_width = darknet.network_width(network)
     darknet_height = darknet.network_height(network)
+    width = network_width(network)
+    height = network_height(network)
     input_path = str2int(args.input)
     cap = cv2.VideoCapture(input_path)
-    Thread(target=video_capture, args=(frame_queue, darknet_image_queue)).start()
+    Thread(target=video_capture, args=(frame_queue, frame_queue_1, darknet_image_queue)).start()
     Thread(target=inference, args=(darknet_image_queue, detections_queue, fps_queue)).start()
     Thread(target=drawing, args=(frame_queue, detections_queue, fps_queue)).start()
+    # Thread(target=color_detect, args=(frame_queue_1, detections_queue)).start()
